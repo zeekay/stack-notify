@@ -1,17 +1,48 @@
-import sys
+import argparse, os, re, sys
 from collections import OrderedDict
 
-from PyQt4 import QtGui
-from PyQt4 import QtCore
+from PyQt4.QtGui import *
+from PyQt4.QtCore import *
 
 import stackexchange as se
+import lxml.html
 
-
+ANSWER_PATH = '/Volumes/Data/zk/Code/so/'
 API_KEY = 'gbzi3hNc0EKI8Gq-D5zCHA'
+
 so = se.Site(se.StackOverflow, API_KEY)
 
+def new_answer(question):
+    """Creates directory structure and copies question content into ANSWER_PATH"""
+    if not isinstance(question, se.Question):
+        try:
+            # assume string
+            id = re.search('\d+', question).group()
+            question = so.question(id)
+        except TypeError:
+            # possibly int?
+            question = so.question(question)
 
-class StackNotify(QtGui.QSystemTrayIcon):
+    doc = lxml.html.parse(question.url)
+    post = doc.xpath('//div[@id="question"]//div[@class="post-text"]')[0]
+
+    # create directory for answer
+    path = os.path.join(ANSWER_PATH, str(question.id))
+    if not os.path.exists(path):
+        os.mkdir(path)
+
+    # write question
+    with open(os.path.join(path, 'question'), 'w') as f:
+        f.write('Title: %s\nTags: %s\nUrl: %s\n\nQuestion:' % (question.title, ', '.join(question.tags), question.url))
+        f.write(post.text_content().strip())
+
+    # write code examples
+    for i, ex in enumerate(post.xpath('//pre'), start=1):
+        with open(os.path.join(path, '-'.join(ex, str(i)))) as f:
+            f.write(ex)
+
+
+class StackNotify(QSystemTrayIcon):
     tracked = ['django', 'javascript', 'python']
     questions = OrderedDict()
     limit = 10
@@ -19,21 +50,20 @@ class StackNotify(QtGui.QSystemTrayIcon):
     title_fmt = 'new question tagged {tags} on so'
     message_fmt = '{title}\nvotes: {votes} answers: {answers}'
 
-    icon_normal = QtGui.QIcon('stackoverflow.png')
-    icon_clicked = QtGui.QIcon('stackoverflow-clicked.png')
+    icons = ['stackoverflow.png', 'stackoverflow-clicked.png']
 
-    def __init__(self):
-        super(StackNotify, self).__init__(self.icon_normal, None)
-        self.active_icon = icon_normal
-        self.activated.connect(self.switch_icon)
-        self.menu = QtGui.QMenu(parent)
+    def __init__(self, parent=None):
+        super(StackNotify, self).__init__(QIcon(self.icons[0]), parent)
+        self.menu = QMenu(parent)
         self.menu.addSeparator()
         self.menu.addActions([
-            QtGui.QAction('Check for new questions', self.menu, triggered=self.update_questions),
-            QtGui.QAction('Quit StackNotify', self.menu, triggered=sys.exit),
+            QAction('Check for new questions', self.menu, triggered=self.update_questions),
+            QAction('Quit StackNotify', self.menu, triggered=sys.exit),
         ])
+        self.menu.aboutToShow.connect(self.switch_icon)
+        self.menu.aboutToHide.connect(self.switch_icon)
         self.setContextMenu(self.menu)
-        timer = QtCore.QTimer(self)
+        timer = QTimer(self)
         timer.timeout.connect(self.update_questions)
         timer.start(1000*60)
 
@@ -50,9 +80,9 @@ class StackNotify(QtGui.QSystemTrayIcon):
             votes=q.up_vote_count - q.down_vote_count,
             answers=len(q.answers),
         )
-        action = QtGui.QAction(name, self.menu)
+        action = QAction(name, self.menu)
         action.triggered.connect(
-            lambda: QtGui.QDesktopServices.openUrl(QtCore.QUrl(q.url))
+            lambda: QDesktopServices.openUrl(QUrl(q.url))
         )
         self.questions[q.id] = {
             'action': action,
@@ -76,17 +106,23 @@ class StackNotify(QtGui.QSystemTrayIcon):
                 self.remove_question(q)
 
     def switch_icon(self):
-        icon = self.icon_normal if self.active_icon != self.icon_normal else self.icon_clicked
-        self.setIcon(icon)
-        self.active_icon = icon
+        self.icons.reverse()
+        self.setIcon(QIcon(self.icons[0]))
 
 def main():
-    app = QtGui.QApplication(sys.argv)
+    app = QApplication(sys.argv)
     stacknotify = StackNotify()
     stacknotify.show()
     #stacknotify.update_questions()
     sys.exit(app.exec_())
 
 if __name__ == '__main__':
-    main()
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--question', metavar="question or id", required=False)
 
+    args = parser.parse_args()
+
+    if args.question:
+        new_answer(args.question)
+    else:
+        main()
