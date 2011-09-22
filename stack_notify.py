@@ -42,6 +42,22 @@ def new_answer(question):
             f.write(ex)
 
 
+def latest_questions(tag):
+    fmt = '{votes} {answers} {title} {url} {tags}'
+    qs = so.questions()
+    latest = sorted((q for q in qs.items if tag in q.tags), key=lambda q: q.creation_date, reverse=True)
+    for q in latest:
+        votes = str((q.up_vote_count - q.down_vote_count)).zfill(2)
+        answers = str(len(q.answers)).zfill(2)
+        tags = ''.join('[{0}]'.format(tag) for tag in q.tags)
+        print fmt.format(votes=votes,
+                         answers=answers,
+                         title=q.title,
+                         url=q.url,
+                         tags=tags)
+    if not latest:
+        print "no recent questions with that tag found"
+
 class StackNotify(QSystemTrayIcon):
     tracked = ['django', 'javascript', 'python']
     questions = OrderedDict()
@@ -50,18 +66,16 @@ class StackNotify(QSystemTrayIcon):
     title_fmt = 'new question tagged {tags} on so'
     message_fmt = '{title}\nvotes: {votes} answers: {answers}'
 
-    icons = ['stackoverflow.png', 'stackoverflow-clicked.png']
-
     def __init__(self, parent=None):
-        super(StackNotify, self).__init__(QIcon(self.icons[0]), parent)
+        icon = QIcon(QPixmap('stackoverflow.png'))
+        icon.addPixmap(QPixmap('stackoverflow-clicked.png'), QIcon.Selected)
+        super(StackNotify, self).__init__(icon, parent)
         self.menu = QMenu(parent)
         self.menu.addSeparator()
         self.menu.addActions([
             QAction('Check for new questions', self.menu, triggered=self.update_questions),
             QAction('Quit StackNotify', self.menu, triggered=sys.exit),
         ])
-        self.menu.aboutToShow.connect(self.switch_icon)
-        self.menu.aboutToHide.connect(self.switch_icon)
         self.setContextMenu(self.menu)
         timer = QTimer(self)
         timer.timeout.connect(self.update_questions)
@@ -105,9 +119,6 @@ class StackNotify(QSystemTrayIcon):
             if i > self.limit:
                 self.remove_question(q)
 
-    def switch_icon(self):
-        self.icons.reverse()
-        self.setIcon(QIcon(self.icons[0]))
 
 def main():
     app = QApplication(sys.argv)
@@ -118,11 +129,14 @@ def main():
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--question', metavar="question or id", required=False)
+    parser.add_argument('--answer', metavar="create answer for question", required=False)
+    parser.add_argument('--latest', metavar="latest questions for a particular tag", required=False)
 
     args = parser.parse_args()
 
-    if args.question:
-        new_answer(args.question)
+    if args.answer:
+        new_answer(args.answer)
+    elif args.latest:
+        latest_questions(args.latest)
     else:
         main()
