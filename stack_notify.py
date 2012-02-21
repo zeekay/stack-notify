@@ -7,13 +7,16 @@ from PyQt4.QtCore import *
 import stackexchange as se
 import lxml.html
 
-ANSWER_PATH = '/Volumes/Data/zk/Code/so/'
+ANSWER_PATH = os.path.expanduser('~/.stacknotify/answers')
 API_KEY = 'gbzi3hNc0EKI8Gq-D5zCHA'
 
 so = se.Site(se.StackOverflow, API_KEY)
 
+
 def new_answer(question):
-    """Creates directory structure and copies question content into ANSWER_PATH"""
+    '''
+    Creates directory structure and copies question content into ANSWER_PATH.
+    '''
     if not isinstance(question, se.Question):
         try:
             # assume string
@@ -29,7 +32,7 @@ def new_answer(question):
     # create directory for answer
     path = os.path.join(ANSWER_PATH, str(question.id))
     if not os.path.exists(path):
-        os.mkdir(path)
+        os.makedirs(path)
 
     # write question
     with open(os.path.join(path, 'question'), 'w') as f:
@@ -38,11 +41,14 @@ def new_answer(question):
 
     # write code examples
     for i, ex in enumerate(post.xpath('//pre'), start=1):
-        with open(os.path.join(path, '-'.join(ex, str(i)))) as f:
-            f.write(ex)
+        with open(os.path.join(path, 'code-%d' % i), 'w') as f:
+            f.write(ex.text_content())
 
 
 def latest_questions(tag):
+    '''
+    Prints latest questions matching a given tag
+    '''
     fmt = '{votes} {answers} {title} {url} {tags}'
     qs = so.questions()
     latest = sorted((q for q in qs.items if tag in q.tags), key=lambda q: q.creation_date, reverse=True)
@@ -58,7 +64,22 @@ def latest_questions(tag):
     if not latest:
         print "no recent questions with that tag found"
 
+
+def get_platform_icons():
+    '''
+    Returns icons for current platform.
+    '''
+    icons = {
+        'darwin': ('stackoverflow-mac.png', 'stackoverflow-clicked-mac.png'),
+        'linux2': ('stackoverflow.png', 'stackoverflow-clicked.png')
+    }
+    basedir = os.path.join(os.path.dirname(os.path.abspath(sys.argv[0])), 'icons')
+    return [os.path.join(basedir, icon) for icon in icons.get(sys.platform, icons['linux2'])]
+
 class StackNotify(QSystemTrayIcon):
+    '''
+    Systray application that notifies when new questions are added on Stackoverflow.
+    '''
     questions = OrderedDict()
     limit = 10
 
@@ -66,16 +87,10 @@ class StackNotify(QSystemTrayIcon):
     message_fmt = '{title}\nvotes: {votes} answers: {answers}'
 
     def __init__(self, tracked, parent=None):
-        # tags we want to track
         self.tracked = tracked
-
-        # set default image to black if on OSX, else use white for both icons
-        # since I have a black xmobar in linux :3
-        if sys.platform == 'linux2':
-            icon = QIcon(QPixmap('stackoverflow-clicked.png'))
-        else:
-            icon = QIcon(QPixmap('stackoverflow.png'))
-        icon.addPixmap(QPixmap('stackoverflow-clicked.png'), QIcon.Selected)
+        normal_icon, clicked_icon = get_platform_icons()
+        icon = QIcon(QPixmap(normal_icon))
+        icon.addPixmap(QPixmap(clicked_icon), QIcon.Selected)
         super(StackNotify, self).__init__(icon, parent)
         self.menu = QMenu(parent)
         self.menu.addSeparator()
@@ -129,11 +144,14 @@ class StackNotify(QSystemTrayIcon):
                 self.remove_question(q)
 
 
-def main(tracked):
+def run_stacknotify(tracked):
+    '''
+    Runs the systray notification app.
+    '''
     app = QApplication(sys.argv)
     stacknotify = StackNotify(tracked)
     stacknotify.show()
-    #stacknotify.update_questions()
+    # stacknotify.update_questions()
     sys.exit(app.exec_())
 
 if __name__ == '__main__':
@@ -148,5 +166,4 @@ if __name__ == '__main__':
     elif args.latest:
         latest_questions(args.latest)
     else:
-        print args.track
-        main(args.track)
+        run_stacknotify(args.track)
