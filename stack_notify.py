@@ -44,6 +44,8 @@ def new_answer(question):
         with open(os.path.join(path, 'code-%d' % i), 'w') as f:
             f.write(ex.text_content())
 
+    print ' '.join([os.path.join(path, f) for f in os.listdir(path)])
+
 
 def latest_questions(tag):
     '''
