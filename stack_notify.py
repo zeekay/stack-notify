@@ -59,14 +59,16 @@ def latest_questions(tag):
         print "no recent questions with that tag found"
 
 class StackNotify(QSystemTrayIcon):
-    tracked = ['django', 'javascript', 'python']
     questions = OrderedDict()
     limit = 10
 
     title_fmt = 'new question tagged {tags} on so'
     message_fmt = '{title}\nvotes: {votes} answers: {answers}'
 
-    def __init__(self, parent=None):
+    def __init__(self, tracked, parent=None):
+        # tags we want to track
+        self.tracked = tracked
+
         # set default image to black if on OSX, else use white for both icons
         # since I have a black xmobar in linux :3
         if sys.platform == 'linux2':
@@ -109,7 +111,7 @@ class StackNotify(QSystemTrayIcon):
         }
         self.menu.insertAction(self.menu.actions()[0], action)
 
-    def rm_question(self, q):
+    def remove_question(self, q):
         self.menu.removeAction(self.questions[q.id]['action'])
         del self.questions[q.id]
 
@@ -117,7 +119,9 @@ class StackNotify(QSystemTrayIcon):
         qs = so.questions()
         latest = sorted(qs.items, key=lambda q: q.creation_date, reverse=True)
         for q in latest:
-            if filter(lambda tag: tag in self.tracked, q.tags) and q.id not in self.questions:
+            if self.tracked and not filter(lambda tag: tag in self.tracked, q.tags):
+                continue
+            if q.id not in self.questions:
                 self.add_question(q)
                 self.notify(q)
         for i,k in enumerate(reversed(self.questions)):
@@ -125,9 +129,9 @@ class StackNotify(QSystemTrayIcon):
                 self.remove_question(q)
 
 
-def main():
+def main(tracked):
     app = QApplication(sys.argv)
-    stacknotify = StackNotify()
+    stacknotify = StackNotify(tracked)
     stacknotify.show()
     #stacknotify.update_questions()
     sys.exit(app.exec_())
@@ -136,7 +140,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--answer', metavar="create answer for question", required=False)
     parser.add_argument('--latest', metavar="latest questions for a particular tag", required=False)
-
+    parser.add_argument('--track', metavar='tags to track', nargs='+', default=(), required=False)
     args = parser.parse_args()
 
     if args.answer:
@@ -144,4 +148,5 @@ if __name__ == '__main__':
     elif args.latest:
         latest_questions(args.latest)
     else:
-        main()
+        print args.track
+        main(args.track)
