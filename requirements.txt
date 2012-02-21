@@ -1,2 +1,2 @@
-git+https://github.com/lucjon/Py-StackExchange.git#egg=stackexchange
 lxml
+requests

@@ -1,30 +1,77 @@
-import argparse, os, re, sys
+import argparse
+import json
+import os
+import re
+import sys
 from collections import OrderedDict
 
 from PyQt4.QtGui import *
 from PyQt4.QtCore import *
 
-import stackexchange as se
 import lxml.html
+import requests
 
+API_URL = 'http://api.stackoverflow.com/1.1/'
 ANSWER_PATH = os.path.expanduser('~/.stacknotify/answers')
-API_KEY = 'gbzi3hNc0EKI8Gq-D5zCHA'
 
-so = se.Site(se.StackOverflow, API_KEY)
+
+class Question(dict):
+    '''
+    Representation of SO Question.
+    '''
+    def __init__(self, data):
+        self.update(data)
+
+    def __getattr__(self, name):
+        '''
+        Ok just a tiny bit of magic I promise!
+        '''
+        if name.startswith('_') or name == 'trait_names':
+            raise AttributeError
+        return self[name]
+
+    @property
+    def id(self):
+        '''
+        Returns id of given question.
+        '''
+        return self.question_id
+
+    @property
+    def url(self):
+        '''
+        Url to question on stackoverflow.
+        '''
+        return 'http://stackoverflow.com/questions/%s/' % self.question_id
+
+    @staticmethod
+    def from_id(id):
+        '''
+        Static method that returns a new Question from it's id.
+        '''
+        # Coerce to string. If we're passed a url extract the id from it.
+        id = re.search('\d+', str(id)).group()
+        res = requests.get(API_URL + 'questions/%s?pagesize=100&sort=creation' % id)
+        try:
+            return Question(json.loads(res.content)['questions'][0])
+        except IndexError:
+            raise Exception('Not a valid question')
+
+
+def recent_questions():
+    '''
+    Fetches 100 most recent questions, returned as a list.
+    '''
+    res = requests.get(API_URL + 'questions?pagesize=100&sort=creation')
+    return [Question(q) for q in json.loads(res.content)['questions']]
 
 
 def new_answer(question):
     '''
     Creates directory structure and copies question content into ANSWER_PATH.
     '''
-    if not isinstance(question, se.Question):
-        try:
-            # assume string
-            id = re.search('\d+', question).group()
-            question = so.question(id)
-        except TypeError:
-            # possibly int?
-            question = so.question(question)
+    if not isinstance(question, Question):
+        question = Question.from_id(question)
 
     doc = lxml.html.parse(question.url)
     post = doc.xpath('//div[@id="question"]//div[@class="post-text"]')[0]
@@ -52,11 +99,10 @@ def latest_questions(tag):
     Prints latest questions matching a given tag
     '''
     fmt = '{votes} {answers} {title} {url} {tags}'
-    qs = so.questions()
-    latest = sorted((q for q in qs.items if tag in q.tags), key=lambda q: q.creation_date, reverse=True)
+    latest = filter(lambda q: tag in q.tags, recent_questions())
     for q in latest:
         votes = str((q.up_vote_count - q.down_vote_count)).zfill(2)
-        answers = str(len(q.answers)).zfill(2)
+        answers = str(q.answer_count).zfill(2)
         tags = ''.join('[{0}]'.format(tag) for tag in q.tags)
         print fmt.format(votes=votes,
                          answers=answers,
@@ -107,16 +153,15 @@ class StackNotify(QSystemTrayIcon):
 
     def notify(self, q):
         votes = q.up_vote_count - q.down_vote_count
-        num_answers = len(q.answers)
         title = self.title_fmt.format(tags=', '.join(q.tags))
-        message = self.message_fmt.format(votes=votes, title=q.title, answers=num_answers)
+        message = self.message_fmt.format(votes=votes, title=q.title, answers=q.answer_count)
         self.showMessage(title, message)
 
     def add_question(self, q):
         name = '{title} {votes} / {answers}'.format(
             title=q.title,
             votes=q.up_vote_count - q.down_vote_count,
-            answers=len(q.answers),
+            answers=q.answer_count,
         )
         action = QAction(name, self.menu)
         action.triggered.connect(
@@ -133,9 +178,7 @@ class StackNotify(QSystemTrayIcon):
         del self.questions[q.id]
 
     def update_questions(self):
-        qs = so.questions()
-        latest = sorted(qs.items, key=lambda q: q.creation_date, reverse=True)
-        for q in latest:
+        for q in recent_questions():
             if self.tracked and not filter(lambda tag: tag in self.tracked, q.tags):
                 continue
             if q.id not in self.questions:
