@@ -44,8 +44,8 @@ class Question(dict):
         '''
         return 'http://stackoverflow.com/questions/%s/' % self.question_id
 
-    @staticmethod
-    def from_id(id):
+    @classmethod
+    def from_id(cls, id):
         '''
         Static method that returns a new Question from it's id.
         '''
@@ -53,7 +53,7 @@ class Question(dict):
         id = re.search('\d+', str(id)).group()
         res = requests.get(API_URL + 'questions/%s?pagesize=100&sort=creation' % id)
         try:
-            return Question(json.loads(res.content)['questions'][0])
+            return cls(json.loads(res.content)['questions'][0])
         except IndexError:
             raise Exception('Not a valid question')
 
