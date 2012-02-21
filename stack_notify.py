@@ -67,7 +67,12 @@ class StackNotify(QSystemTrayIcon):
     message_fmt = '{title}\nvotes: {votes} answers: {answers}'
 
     def __init__(self, parent=None):
-        icon = QIcon(QPixmap('stackoverflow.png'))
+        # set default image to black if on OSX, else use white for both icons
+        # since I have a black xmobar in linux :3
+        if sys.platform == 'linux2':
+            icon = QIcon(QPixmap('stackoverflow-clicked.png'))
+        else:
+            icon = QIcon(QPixmap('stackoverflow.png'))
         icon.addPixmap(QPixmap('stackoverflow-clicked.png'), QIcon.Selected)
         super(StackNotify, self).__init__(icon, parent)
         self.menu = QMenu(parent)
