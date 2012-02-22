@@ -179,7 +179,7 @@ class StackNotify(QSystemTrayIcon):
 
     def update_questions(self):
         for q in recent_questions():
-            if self.tracked and not filter(lambda tag: tag in self.tracked, q.tags):
+            if self.tracked and not set(self.tracked) & set(q.tags):
                 continue
             if q.id not in self.questions:
                 self.add_question(q)
@@ -196,7 +196,7 @@ def run_stacknotify(tracked):
     app = QApplication(sys.argv)
     stacknotify = StackNotify(tracked)
     stacknotify.show()
-    # stacknotify.update_questions()
+    stacknotify.update_questions()
     sys.exit(app.exec_())
 
 if __name__ == '__main__':
